@@ -216,6 +216,8 @@ defmodule Axon do
   alias __MODULE__, as: Axon
   alias Axon.Parameter
 
+  require Logger
+
   # Axon serialization version
   @file_version 1
 
@@ -3514,13 +3516,35 @@ defmodule Axon do
     {%{axon_map | parent: List.wrap(parents), name: name}, op_counts}
   end
 
-  defp axon_to_map(%Axon{op_name: op, parent: parents, name: name_fn} = model, op_counts) do
+  defp axon_to_map(%Axon{op_name: op_name, op: op, parent: parents, name: name_fn} = model, op_counts) do
     {parents, op_counts} = Enum.map_reduce(parents, op_counts, &axon_to_map/2)
     axon_map = Map.from_struct(model) |> Map.put(:axon, :axon)
-    name = name_fn.(op, op_counts)
-    op_counts = Map.update(op_counts, op, 1, fn x -> x + 1 end)
+    name = name_fn.(op_name, op_counts)
+    validate_serialized_op!(name, op)
+    op_counts = Map.update(op_counts, op_name, 1, fn x -> x + 1 end)
     {%{axon_map | parent: parents, name: name}, op_counts}
   end
+
+  # TODO: Raise on next release
+  defp validate_serialized_op!(name, op) when is_function(op) do
+    fun_info = Function.info(op)
+
+    case fun_info[:type] do
+      :local ->
+        Logger.warning(
+          "Attempting to serialize anonymous function in layer #{name}," <>
+            " this will result in errors during deserialization between" <>
+            " different processes, and will be unsupported in a future" <>
+            " release. You should instead use a fully-qualified MFA function" <>
+            " such as &Axon.Layers.dense/3"
+        )
+
+      :external ->
+        :ok
+    end
+  end
+
+  defp validate_serialized_op!(_name, op) when is_atom(op), do: :ok
 
   @doc """
   Deserializes serialized model and parameters into a `{model, params}`
@@ -3561,13 +3585,40 @@ defmodule Axon do
     struct(__MODULE__, model)
   end
 
-  defp map_to_axon(%{axon: :axon, parent: parents, name: name} = model) do
+  defp map_to_axon(%{axon: :axon, op: op, parent: parents, name: name} = model) do
     parents = Enum.map(parents, &map_to_axon/1)
     model = Map.drop(model, [:axon])
+    validate_deserialized_op!(name, op)
     name_fn = fn _, _ -> name end
     model = %{model | parent: parents, name: name_fn}
     struct(__MODULE__, model)
   end
+
+  # TODO: Raise on next release
+  defp validate_deserialized_op!(name, op) when is_function(op) do
+    fun_info = Function.info(op)
+
+    case fun_info[:type] do
+      :local ->
+        Logger.warning(
+          "Attempting to deserialize anonymous function in layer #{name}," <>
+            " this will result in errors during deserialization between" <>
+            " different processes, and will be unsupported in a future" <>
+            " release"
+        )
+
+      :external ->
+        unless function_exported?(fun_info[:module], fun_info[:name], fun_info[:arity]) do
+          Logger.warning(
+            "Attempting to deserialize model which depends on function" <>
+              " #{inspect(op)} in layer #{name} which does not exist in" <>
+              " the current environment, check your dependencies"
+          )
+        end
+    end
+  end
+
+  defp validate_deserialized_op!(_name, op) when is_atom(op), do: :ok
 
   ## Helpers
 
