@@ -3516,7 +3516,10 @@ defmodule Axon do
     {%{axon_map | parent: List.wrap(parents), name: name}, op_counts}
   end
 
-  defp axon_to_map(%Axon{op_name: op_name, op: op, parent: parents, name: name_fn} = model, op_counts) do
+  defp axon_to_map(
+         %Axon{op_name: op_name, op: op, parent: parents, name: name_fn} = model,
+         op_counts
+       ) do
     {parents, op_counts} = Enum.map_reduce(parents, op_counts, &axon_to_map/2)
     axon_map = Map.from_struct(model) |> Map.put(:axon, :axon)
     name = name_fn.(op_name, op_counts)
