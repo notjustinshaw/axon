@@ -472,6 +472,12 @@ defmodule Axon do
     layer(:constant, [], name: opts[:name], value: tensor, op_name: :constant)
   end
 
+  def constant(number, opts) when is_number(number) do
+    opts = Keyword.validate!(opts, [:name])
+
+    layer(:constant, [], name: opts[:name], value: Nx.tensor(number), op_name: :constant)
+  end
+
   def constant(value, _) do
     raise ArgumentError,
           "value passed to constant must be an Nx tensor" <>
@@ -633,7 +639,7 @@ defmodule Axon do
         bias = param("bias", bias_shape, initializer: opts[:bias_initializer])
         {[x, kernel, bias], :dense}
       else
-        {[x, kernel], &Axon.Layers.dense(&1, &2, 0, &3)}
+        {[x, kernel, constant(0)], :dense}
       end
 
     node = layer(op, inputs, name: opts[:name], op_name: :dense)
@@ -705,7 +711,7 @@ defmodule Axon do
         bias = param("bias", bias_shape, initializer: opts[:bias_initializer])
         {[input1, input2, kernel, bias], :bilinear}
       else
-        {[input1, input2, kernel], &Axon.Layers.bilinear(&1, &2, &3, 0, &4)}
+        {[input1, input2, kernel, constant(0)], :bilinear}
       end
 
     node = layer(op, inputs, name: opts[:name], op_name: :bilinear)
@@ -797,7 +803,7 @@ defmodule Axon do
         bias = param("bias", bias_shape, initializer: opts[:bias_initializer])
         {[x, kernel, bias], :conv}
       else
-        {[x, kernel], &Axon.Layers.conv(&1, &2, 0, &3)}
+        {[x, kernel, constant(0)], :conv}
       end
 
     node =
@@ -888,7 +894,7 @@ defmodule Axon do
         bias = param("bias", bias_shape, initializer: opts[:bias_initializer])
         {[x, kernel, bias], :conv_transpose}
       else
-        {[x, kernel], &Axon.Layers.conv_transpose(&1, &2, 0, &3)}
+        {[x, kernel, constant(0)], :conv_transpose}
       end
 
     node =
@@ -991,7 +997,7 @@ defmodule Axon do
 
         {[x, kernel, bias], :depthwise_conv}
       else
-        {[x, kernel], &Axon.Layers.depthwise_conv(&1, &2, 0, &3)}
+        {[x, kernel, constant(0)], :depthwise_conv}
       end
 
     node =
@@ -1110,7 +1116,7 @@ defmodule Axon do
         b2 = param("bias_2", b2_shape, initializer: bias_initializer)
         {[x, k1, b1, k2, b2], :separable_conv2d}
       else
-        {[x, k1, k2], &Axon.Layers.separable_conv2d(&1, &2, 0, &3, 0, &4)}
+        {[x, k1, constant(0), k2, constant(0)], :separable_conv2d}
       end
 
     node =
@@ -1245,7 +1251,7 @@ defmodule Axon do
         b3 = param("bias_3", b3_shape, initializer: bias_initializer)
         {[x, k1, b1, k2, b2, k3, b3], :separable_conv3d}
       else
-        {[x, k1, k2, k3], &Axon.Layers.separable_conv3d(&1, &2, 0, &3, 0, &4, 0, &5)}
+        {[x, k1, constant(0), k2, constant(0), k3, constant(0)], :separable_conv3d}
       end
 
     node =
@@ -2265,7 +2271,7 @@ defmodule Axon do
 
         {[x, hidden_state, input_kernel, hidden_kernel, bias], :lstm}
       else
-        {[x, hidden_state, input_kernel, hidden_kernel], &Axon.Layers.lstm(&1, &2, &3, &4, 0, &5)}
+        {[x, hidden_state, input_kernel, hidden_kernel, constant(0)], :lstm}
       end
 
     output =
@@ -2643,7 +2649,7 @@ defmodule Axon do
         b = param("bias", {:tuple, [bias_shape]}, initializer: bias_initializer)
         {[x, hidden_state, wi, wh, b], :conv_lstm}
       else
-        {[x, hidden_state, wi, wh], &Axon.Layers.conv_lstm(&1, &2, &3, &4, {0}, &5)}
+        {[x, hidden_state, wi, wh, constant(0)], :conv_lstm}
       end
 
     output =
