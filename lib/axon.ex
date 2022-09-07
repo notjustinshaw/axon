@@ -3530,10 +3530,8 @@ defmodule Axon do
 
   # TODO: Raise on next release
   defp validate_serialized_op!(name, op) when is_function(op) do
-    fun_info = Function.info(op)
-
-    case fun_info[:type] do
-      :local ->
+    case Function.info(op, :type) do
+      {:type, :local} ->
         Logger.warning(
           "Attempting to serialize anonymous function in layer #{name}," <>
             " this will result in errors during deserialization between" <>
@@ -3542,7 +3540,7 @@ defmodule Axon do
             " such as &Axon.Layers.dense/3"
         )
 
-      :external ->
+      {:type, :external} ->
         :ok
     end
   end
