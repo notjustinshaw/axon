@@ -8,7 +8,7 @@ defmodule Axon.InitializersTest do
   describe "orthogonal/1" do
     test "property" do
       init_fn = Axon.Initializers.orthogonal()
-      t1 = init_fn.({3, 3}, {:f, 32})
+      t1 = init_fn.({3, 3}, {:f, 32}, Nx.Random.key(1))
       identity_left_t1 = t1 |> Nx.transpose() |> Nx.dot(t1)
 
       assert_all_close(identity_left_t1, Nx.eye(identity_left_t1), atol: 1.0e-3, rtol: 1.0e-3)
@@ -21,7 +21,7 @@ defmodule Axon.InitializersTest do
       )
 
       init_fn = Axon.Initializers.orthogonal()
-      t2 = init_fn.({1, 2, 3, 4, 5}, {:f, 32}) |> Nx.reshape({24, 5})
+      t2 = init_fn.({1, 2, 3, 4, 5}, {:f, 32}, Nx.Random.key(1)) |> Nx.reshape({24, 5})
 
       identity_left_t2 = t2 |> Nx.transpose() |> Nx.dot(t2)
 
@@ -43,7 +43,7 @@ defmodule Axon.InitializersTest do
                    ~r/Axon.Initializers.orthogonal: expected input_shape shape to have at least rank 2/,
                    fn ->
                      init_fn = Axon.Initializers.orthogonal()
-                     init_fn.({1}, {:f, 32})
+                     init_fn.({1}, {:f, 32}, Nx.Random.key(1))
                    end
     end
   end
