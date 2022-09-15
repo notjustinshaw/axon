@@ -3509,29 +3509,44 @@ defmodule Axon do
   """
   @doc type: :model
   def serialize(%Axon{} = model, params, opts \\ []) do
-    {model_meta, _op_counts} = axon_to_map(model, %{})
+    {model_meta, _op_counts} = axon_to_map(model, {%{}, %{}})
     params = Nx.serialize(params, opts)
     :erlang.term_to_binary({@file_version, model_meta, params}, opts)
   end
 
-  defp axon_to_map(%Axon{op: :container, name: name_fn, parent: [parents]} = model, op_counts) do
-    {parents, op_counts} = deep_map_reduce(parents, op_counts, &axon_to_map/2)
-    axon_map = Map.from_struct(model) |> Map.put(:axon, :axon)
-    name = name_fn.(:container, op_counts)
-    op_counts = Map.update(op_counts, :container, 1, fn x -> x + 1 end)
-    {%{axon_map | parent: List.wrap(parents), name: name}, op_counts}
+  defp axon_to_map(%Axon{op_name: op, id: id} = model, {cache, op_counts} = cache_and_counts) do
+    case cache do
+      %{^id => entry} ->
+        {entry, {cache, op_counts}}
+
+      %{} ->
+        {entry, {cache, op_counts}} = recur_axon_to_map(model, cache_and_counts)
+        op_counts = Map.update(op_counts, op, 1, fn x -> x + 1 end)
+        {entry, {Map.put(cache, id, entry), op_counts}}
+    end
   end
 
-  defp axon_to_map(
-         %Axon{op_name: op_name, op: op, parent: parents, name: name_fn} = model,
-         op_counts
+  defp recur_axon_to_map(
+         %Axon{op: :container, name: name_fn, parent: [parents]} = model,
+         cache_and_counts
        ) do
-    {parents, op_counts} = Enum.map_reduce(parents, op_counts, &axon_to_map/2)
+    {parents, {cache, op_counts}} = deep_map_reduce(parents, cache_and_counts, &axon_to_map/2)
     axon_map = Map.from_struct(model) |> Map.put(:axon, :axon)
-    name = name_fn.(op_name, op_counts)
+    name = name_fn.(:container, op_counts)
+    entry = %{axon_map | name: name, parent: parents}
+    {entry, {cache, op_counts}}
+  end
+
+  defp recur_axon_to_map(
+         %Axon{op_name: op, parent: parents, name: name_fn} = model,
+         cache_and_counts
+       ) do
+    {parents, {cache, op_counts}} = Enum.map_reduce(parents, cache_and_counts, &axon_to_map/2)
+    axon_map = Map.from_struct(model) |> Map.put(:axon, :axon)
+    name = name_fn.(op, op_counts)
     validate_serialized_op!(name, op)
-    op_counts = Map.update(op_counts, op_name, 1, fn x -> x + 1 end)
-    {%{axon_map | parent: parents, name: name}, op_counts}
+    entry = %{axon_map | parent: parents, name: name}
+    {entry, {cache, op_counts}}
   end
 
   # TODO: Raise on next release
@@ -3579,26 +3594,37 @@ defmodule Axon do
   @doc type: :model
   def deserialize(serialized, opts \\ []) do
     {1, model_meta, serialized_params} = :erlang.binary_to_term(serialized, opts)
-    model = map_to_axon(model_meta)
+    {model, _} = map_to_axon(model_meta, %{})
     params = Nx.deserialize(serialized_params, opts)
     {model, params}
   end
 
-  defp map_to_axon(%{op: :container, parent: [parents], name: name} = model) do
-    parents = deep_new(parents, &map_to_axon/1)
-    model = Map.drop(model, [:axon])
-    name_fn = fn _, _ -> name end
-    model = %{model | parent: List.wrap(parents), name: name_fn}
-    struct(__MODULE__, model)
+  defp map_to_axon(%{id: id} = model_meta, cache) do
+    case cache do
+      %{^id => entry} ->
+        {entry, cache}
+
+      %{} ->
+        {entry, cache} = recur_map_to_axon(model_meta, cache)
+        {entry, Map.put(cache, id, entry)}
+    end
   end
 
-  defp map_to_axon(%{axon: :axon, op: op, parent: parents, name: name} = model) do
-    parents = Enum.map(parents, &map_to_axon/1)
+  defp recur_map_to_axon(%{op: :container, parent: [parents], name: name} = model, cache) do
+    {parents, cache} = deep_map_reduce(parents, cache, &map_to_axon/2)
+    model = Map.drop(model, [:axon])
+    name_fn = fn _, _ -> name end
+    model = struct(__MODULE__, %{model | parent: List.wrap(parents), name: name_fn})
+    {model, cache}
+  end
+
+  defp recur_map_to_axon(%{axon: :axon, op: op, parent: parents, name: name} = model, cache) do
+    {parents, cache} = Enum.map_reduce(parents, cache, &map_to_axon/2)
     model = Map.drop(model, [:axon])
     validate_deserialized_op!(name, op)
     name_fn = fn _, _ -> name end
-    model = %{model | parent: parents, name: name_fn}
-    struct(__MODULE__, model)
+    model = struct(__MODULE__, %{model | parent: parents, name: name_fn})
+    {model, cache}
   end
 
   # TODO: Raise on next release
